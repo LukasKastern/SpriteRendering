@@ -45,7 +45,6 @@ public class BulkSpawnSprites : MonoBehaviour
         var defaultWorld = World.DefaultGameObjectInjectionWorld;
         var entityManager = defaultWorld.EntityManager;
 
-        var area = boundsToSpawnSpritesIN.width + boundsToSpawnSpritesIN.height;
         var xCount = spriteCountPerDimension;
         var yCount = spriteCountPerDimension;
 

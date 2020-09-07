@@ -20,11 +20,14 @@ namespace SpriteRendering
                 var spriteSize = spriteRenderer.size;
                 float uniformScale = 1f;
 
-                if ( transform.localScale.x != transform.localScale.y )
-                    spriteSize *= new Vector2( transform.localScale.x, transform.localScale.y );
-                else
-                    uniformScale = transform.localScale.x;
+                //If scale x and y is the same we do not need to adjust the size of the mesh
+                //This allows us to instance sprites with different sizes
                 
+                if ( transform.localScale.x == transform.localScale.y ) 
+                    uniformScale = transform.localScale.x; 
+                else 
+                    spriteSize = spriteRenderer.size * transform.localScale;
+
                 var material = spriteRenderer.sharedMaterial;
 
                 if ( material == null || material.shader.name == "Sprites/Default" ) 
@@ -54,6 +57,7 @@ namespace SpriteRendering
                 renderSprite.sortOrder = spriteRenderer.sortingOrder;
                 
                 DstEntityManager.AddSharedComponentData( entity, renderSprite );
+           
                 DstEntityManager.AddComponentData( entity, new Translation2D( )
                 {
                     Value = new float2( transform.position.x, transform.position.y )

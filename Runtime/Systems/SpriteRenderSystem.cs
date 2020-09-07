@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
+using UnityEngine;
 using UnityEngine.Profiling;
 
 namespace SpriteRendering 
@@ -73,11 +74,11 @@ namespace SpriteRendering
 
             Profiler.BeginSample("Sort Renderers by Layer");
             {
-
                 var sortedChunkIndex = 0;
                 for ( int i = 0; i < sharedRenderCount; i++ )
                 {
-                    var renderSpriteIdx = chunks[sortedChunkIndices[sortedChunkIndex]].GetSharedComponentIndex( renderMeshType );
+                    var chunkIdx = sortedChunkIndices[sortedChunkIndex];
+                    var renderSpriteIdx = chunks[chunkIdx].GetSharedComponentIndex( renderMeshType );
                     var sortLayer = EntityManager.GetSharedComponentData<RenderSprite>( renderSpriteIdx ).sortOrder;
                 
                     renderBatches[i] = new SpriteRenderBatch( )
@@ -132,7 +133,7 @@ namespace SpriteRendering
                         }
 
                     
-                        m_instancedRenderManager.AddDynamicBatch( rendererSharedComponentIndex, instanceCount, chunks, startSortedIndex, batchChunkCount );
+                        m_instancedRenderManager.AddDynamicBatch( rendererSharedComponentIndex, instanceCount, chunks, sortedChunkIndices, startSortedIndex, batchChunkCount );
                     }
                 }
             }

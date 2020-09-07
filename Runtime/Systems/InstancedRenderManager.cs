@@ -1,8 +1,5 @@
-using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Runtime.CompilerServices;
-using SpriteRendering;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -116,7 +113,7 @@ namespace SpriteRendering
             return m_previousCullingJob;
         }
         
-        public unsafe void AddDynamicBatch( int renderSharedComponentIndex, int instanceCount, NativeArray<ArchetypeChunk> chunks, int startChunk, int chunkCount )
+        public unsafe void AddDynamicBatch( int renderSharedComponentIndex, int instanceCount, NativeArray<ArchetypeChunk> chunks, NativeArray<int> sortedChunkIndices, int startChunk, int chunkCount )
         {
             m_instances += instanceCount;
             m_batchCount++;
@@ -136,6 +133,43 @@ namespace SpriteRendering
 
             var propertyBlock = m_MaterialPropertyBlocks[m_batchCount - 1];
 
+            Profiler.BeginSample( "Copy Instance Data" );
+            
+            var propertyChunkPointers = new NativeList<PropertyChunkPointer>( chunkCount, Allocator.Temp );
+
+            for ( int i = 0; i < m_floatHandles.Count; ++i )
+            {
+                var floatHandle = m_floatHandles[i];
+
+                GetPropertyChunkPointers<float>( propertyChunkPointers, chunks, sortedChunkIndices, startChunk, chunkCount, m_entityManager.GetDynamicComponentTypeHandle(floatHandle.ComponentType), 4 );
+                
+                fixed ( float* cpy = m_floatCopyBuffer )
+                {
+                    if ( propertyChunkPointers.Length > 0 )
+                    {
+                        PopulateCopyBuffer( propertyChunkPointers, cpy, floatHandle.DefaultValue, 4, instanceCount);
+                        propertyBlock.SetFloatArray( floatHandle.PropertyId, m_floatCopyBuffer );
+                    }
+                }
+            }
+            
+            for ( int i = 0; i < m_float4Handles.Count; ++i )
+            {
+                var float4Handle = m_float4Handles[i];
+
+                GetPropertyChunkPointers<float4>( propertyChunkPointers, chunks, sortedChunkIndices, startChunk, chunkCount, m_entityManager.GetDynamicComponentTypeHandle(float4Handle.ComponentType), 16 );
+                
+                fixed ( Vector4* cpy = m_vectorCopyBuffer )
+                {
+                    if ( propertyChunkPointers.Length > 0 )
+                    {
+                        PopulateCopyBuffer( propertyChunkPointers, cpy, float4Handle.DefaultValue, 16, instanceCount );
+                        propertyBlock.SetVectorArray( float4Handle.PropertyId, m_vectorCopyBuffer );
+                    }
+                }
+            }
+
+            Profiler.EndSample( );
             
 
             Profiler.BeginSample( "Queueing Batch to add" );
@@ -155,53 +189,14 @@ namespace SpriteRendering
             Profiler.EndSample( );
       
             m_dynamicBatches.Add( batchIdx );
-        
-
-            Profiler.BeginSample( "Copy Instance Data" );
-            
-            var propertyChunkPointers = new NativeList<PropertyChunkPointer>( chunkCount, Allocator.Temp );
-
-            for ( int i = 0; i < m_floatHandles.Count; ++i )
-            {
-                var floatHandle = m_floatHandles[i];
-
-                GetPropertyChunkPointers<float>( propertyChunkPointers, chunks, startChunk, chunkCount, m_entityManager.GetDynamicComponentTypeHandle(floatHandle.ComponentType), 4 );
-                
-                fixed ( float* cpy = m_floatCopyBuffer )
-                {
-                    if ( propertyChunkPointers.Length > 0 )
-                    {
-                        PopulateCopyBuffer( propertyChunkPointers, cpy, floatHandle.DefaultValue, 4, instanceCount );
-                        propertyBlock.SetFloatArray( floatHandle.PropertyId, m_floatCopyBuffer );
-                    }
-                }
-            }
-            
-            for ( int i = 0; i < m_float4Handles.Count; ++i )
-            {
-                var float4Handle = m_float4Handles[i];
-
-                GetPropertyChunkPointers<float4>( propertyChunkPointers, chunks, startChunk, chunkCount, m_entityManager.GetDynamicComponentTypeHandle(float4Handle.ComponentType), 16 );
-                
-                fixed ( Vector4* cpy = m_vectorCopyBuffer )
-                {
-                    if ( propertyChunkPointers.Length > 0 )
-                    {
-                        PopulateCopyBuffer( propertyChunkPointers, cpy, float4Handle.DefaultValue, 16, instanceCount );
-                        
-                        propertyBlock.SetVectorArray( float4Handle.PropertyId, m_vectorCopyBuffer );
-                    }
-                }
-            }
-
-            Profiler.EndSample( );
+           
         }
 
         private static unsafe void PopulateCopyBuffer<T>( NativeArray<PropertyChunkPointer> chunkPointers, void* copyBuffer, T defaultValue, int typeSize, int instanceCount ) where T : unmanaged
         {
             //Initialize copy buffer with the default value of this property
-            UnsafeUtility.MemCpyReplicate( copyBuffer, &defaultValue, 4, instanceCount );
-
+            UnsafeUtility.MemCpyReplicate( copyBuffer, &defaultValue, typeSize, instanceCount );
+            
             //After that we set the per chunk data
             for ( int j = 0; j < chunkPointers.Length; ++j )
             {
@@ -213,7 +208,7 @@ namespace SpriteRendering
         
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe void GetPropertyChunkPointers<T>( NativeList<PropertyChunkPointer> pointers, NativeArray<ArchetypeChunk> chunks, int chunkStartOffset, int chunkCount, DynamicComponentTypeHandle componentTypeHandle, int typeSize ) where T : unmanaged
+        private static unsafe void GetPropertyChunkPointers<T>( NativeList<PropertyChunkPointer> pointers, NativeArray<ArchetypeChunk> chunks, NativeArray<int> sortedChunkIndices, int chunkStartOffset, int chunkCount, DynamicComponentTypeHandle componentTypeHandle, int typeSize ) where T : unmanaged
         {
             pointers.Clear( );
 
@@ -221,7 +216,7 @@ namespace SpriteRendering
             
             for ( int j = chunkStartOffset; j < chunkStartOffset + chunkCount; ++j )
             {
-                var chunk = chunks[j];
+                var chunk = chunks[sortedChunkIndices[j]];
 
                 if ( chunk.Has( componentTypeHandle ) )
                 {
@@ -276,119 +271,4 @@ namespace SpriteRendering
 
         private List<FloatProperty> m_floatHandles = new List<FloatProperty>();
     }
-}
-
-internal struct PropertyFloat4
-{
-    public float4 DefaultValue;
-    public int ShaderPropertyId;
-    public ComponentType ComponentType;
-}
-
-internal struct PropertyFloat
-{
-    public float DefaultValue;
-    public int ShaderPropertyId;
-    public ComponentType ComponentType;
-}
-
-[AttributeUsage( AttributeTargets.Struct )]
-public class RegisterInstancedPropertyAttribute : Attribute
-{
-    internal static List<PropertyFloat4> Float4Properties;
-    internal static List<PropertyFloat> FloatProperties;
-
-    private InstancedPropertyType m_propertyType;
-    private string m_shaderPropertyName;
-    private object m_defaultValue;
-    
-    public RegisterInstancedPropertyAttribute( string shaderPropertyName, float x, float y, float z, float w )
-    {
-        m_defaultValue = new float4(x, y, z, w);
-        m_shaderPropertyName = shaderPropertyName;
-        m_propertyType = InstancedPropertyType.Float4;
-    }
-    
-    public RegisterInstancedPropertyAttribute( string shaderPropertyName, float defaultValue )
-    {
-        m_defaultValue = defaultValue;
-        m_shaderPropertyName = shaderPropertyName;
-        m_propertyType = InstancedPropertyType.Float;
-    }
-
-    
-    public static void Initialize( )
-    {
-        if ( Float4Properties != null ) return;
-
-        Float4Properties = new List<PropertyFloat4>( );
-        FloatProperties = new List<PropertyFloat>();
-        
-        TypeManager.Initialize( );
-        
-        foreach ( var assembly in AppDomain.CurrentDomain.GetAssemblies( ) )
-        {
-            if ( !IsAssemblyReferencingSpriteRendering( assembly ) ) continue;
-
-            foreach ( var type in assembly.GetTypes() )
-            {
-                var instancedPropertyAttribute = type.GetCustomAttribute<RegisterInstancedPropertyAttribute>( );
-
-                if ( instancedPropertyAttribute == null ) continue;
-
-                var propertyType = instancedPropertyAttribute.m_propertyType;
-
-                if ( propertyType == InstancedPropertyType.Float )
-                {
-                    var size = UnsafeUtility.SizeOf( type );
-
-                    if ( size != 4 )
-                    {
-                        Debug.LogError( $"Component Type {type.Name} needs to have a size of 4 bytes but is {size}" );
-                        continue;
-                    }
-
-                    FloatProperties.Add( new PropertyFloat()
-                    {
-                        ComponentType = new ComponentType( type ),
-                        ShaderPropertyId = Shader.PropertyToID( instancedPropertyAttribute.m_shaderPropertyName ),
-                        DefaultValue = (float)instancedPropertyAttribute.m_defaultValue
-                    });
-                    
-                }
-                
-                else if ( propertyType == InstancedPropertyType.Float4 )
-                {
-                    var size = UnsafeUtility.SizeOf( type );
-
-                    if ( size != 16 )
-                    {
-                        Debug.LogError( $"Component Type {type.Name} needs to have a size of 16 bytes but is {size}" );
-                        continue;
-                    }
-
-                    Float4Properties.Add( new PropertyFloat4()
-                    {
-                        ComponentType = new ComponentType( type ),
-                        ShaderPropertyId = Shader.PropertyToID( instancedPropertyAttribute.m_shaderPropertyName ),
-                        DefaultValue = (float4) instancedPropertyAttribute.m_defaultValue
-                    });
-                }
-            }
-        }
-    }
-
-    private static bool IsAssemblyReferencingSpriteRendering(Assembly assembly)
-    {
-        const string assemblyName = "SpriteRendering";
-        if (assembly.GetName().Name.Contains(assemblyName))
-            return true;
-
-        var referencedAssemblies = assembly.GetReferencedAssemblies();
-        foreach (var referenced in referencedAssemblies)
-            if (referenced.Name.Contains(assemblyName))
-                return true;
-        return false;
-    }
-
 }
