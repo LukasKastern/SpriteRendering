@@ -1,0 +1,15 @@
+{
+  "name": "com.SpriteRendering",
+  "displayName": "SpriteRendering",
+  "version": "0.0.1",
+  "unity": "2020.1",
+  "unityRelease": "01f",
+  "description": "SpriteRendering aims to be a drag and drop replacement for traditional Unity 2D rendering inside ECS",
+  "keywords": [
+  ],
+  "dependencies": {},
+  "repository": {
+    "url": "https://github.com/LukasKastern/SpriteRendering.git",
+    "type": "git",
+  }
+}
