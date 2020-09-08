@@ -1,6 +1,6 @@
 # SpriteRendering
 
-SpriteRendering aims to provide a rendering backend for 2d entities inside Unitys ECS.
+SpriteRendering aims to provide a rendering backend for 2d entities inside Unity's ECS.
 
 Instead of focussing on 'maximum performance' this package is oriented at giving the user an easy experience while not constraining him to seemingly arbitrary constraints.
 
